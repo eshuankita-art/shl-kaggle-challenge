@@ -1,0 +1,6 @@
+data/
+.venv/
+kaggle.json
+*.zip
+__pycache__/
+.env
