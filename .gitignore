@@ -1,6 +1,8 @@
 data/
+shl-hiring-assessment-2026/
 .venv/
 kaggle.json
 *.zip
+*.wav
 __pycache__/
 .env
