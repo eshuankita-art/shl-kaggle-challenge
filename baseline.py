@@ -169,16 +169,16 @@ def main():
     test_rows = read_table(root / "test.csv")
     sample_rows = read_table(root / "sample_submission.csv")
 
-    # The Data tab lists 769 train wavs, 216 test wavs, and a sample file.
-    # The sample file is the submission template, and it is shorter than test.csv.
+    # The Data tab lists 769 train wavs and 216 test wavs. The grader scores
+    # one row per test.csv clip. sample_submission.csv is shorter and is not
+    # the row list to follow.
     print(f"train.csv rows: {len(train_rows)}")
     print(f"test.csv rows: {len(test_rows)}")
     print(f"sample_submission.csv rows: {len(sample_rows)}")
-    if len(sample_rows) != len(test_rows):
-        print(
-            "Row mismatch: submission.csv follows sample_submission.csv, "
-            "not test.csv."
-        )
+    print(
+        "The grader expects 216 rows from test.csv. "
+        "sample_submission.csv has 204."
+    )
 
     train_labels = np.array([float(row["label"]) for row in train_rows], dtype=np.float64)
     fallback_score = float(train_labels.mean())
@@ -191,11 +191,12 @@ def main():
     model.to(device)
     model.eval()
 
-    # Every training clip is needed for the fit. Submission clips that are not
-    # already in training are added only when the wav is actually on disk.
+    # Every training clip is needed for the fit. Every test.csv clip is
+    # embedded too, so the submission can cover all 216 grader rows. A missing
+    # wav is skipped here and filled with the training average later.
     needed = []
     seen = set()
-    for row in train_rows + sample_rows:
+    for row in train_rows + test_rows:
         name = row["filename"]
         if name not in seen:
             needed.append(name)
@@ -230,10 +231,12 @@ def main():
     fitted = make_model()
     fitted.fit(features, train_labels)
 
+    # One prediction per test.csv row, in that file's order. A missing wav
+    # keeps the training-label average. Scores are clipped to [0, 5].
     predictions = []
     used_audio = 0
     used_fallback = 0
-    for row in sample_rows:
+    for row in test_rows:
         vector = embeddings.get(row["filename"])
         if vector is None:
             score = fallback_score
@@ -254,18 +257,26 @@ def main():
     with open(output_path, "w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=["filename", "label"])
         writer.writeheader()
-        for row, score in zip(sample_rows, predictions):
+        for row, score in zip(test_rows, predictions):
             writer.writerow({"filename": row["filename"], "label": f"{score:.6f}"})
 
-    # Confirm the saved file matches the sample template before you submit it.
+    # Confirm the saved file matches test.csv before you submit it. The grader
+    # wants those 216 rows. sample_submission.csv only has 204.
     saved_rows = read_table(output_path)
-    same_names = [row["filename"] for row in saved_rows] == [
-        row["filename"] for row in sample_rows
+    test_names = [row["filename"] for row in test_rows]
+    saved_names = [row["filename"] for row in saved_rows]
+    same_names = saved_names == test_names
+    blank_scores = [
+        row["label"] for row in saved_rows if row["label"].strip() == ""
     ]
-    blank_scores = [row["label"] for row in saved_rows if row["label"] == ""]
     print(f"Wrote {output_path}")
-    print(f"Columns: filename, label")
-    print(f"Rows match the sample file: {len(saved_rows) == len(sample_rows) and same_names}")
+    print("Columns: filename, label")
+    print(
+        "The grader expects 216 rows from test.csv. "
+        f"sample_submission.csv has {len(sample_rows)} rows."
+    )
+    print(f"Saved data rows: {len(saved_rows)}")
+    print(f"Filenames match test.csv in the same order: {same_names and len(saved_rows) == len(test_rows)}")
     print(f"Blank scores: {len(blank_scores)}")
 
 
